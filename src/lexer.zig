@@ -10,25 +10,27 @@ pub const Token = struct {
     };
 
     pub const keywords = std.StaticStringMap(Tag).initComptime(.{
+        .{ "and", .keyword_and },
+        .{ "break", .keyword_break },
         .{ "do", .keyword_do },
-        .{ "end", .keyword_end },
-        .{ "while", .keyword_while },
-        .{ "until", .keyword_until },
-        .{ "if", .keyword_if },
-        .{ "then", .keyword_then },
-        .{ "elseif", .keyword_elseif },
         .{ "else", .keyword_else },
+        .{ "elseif", .keyword_elseif },
+        .{ "end", .keyword_end },
+        .{ "false", .keyword_false },
         .{ "for", .keyword_for },
         .{ "function", .keyword_function },
+        .{ "if", .keyword_if },
+        .{ "in", .keyword_in },
         .{ "local", .keyword_local },
-        .{ "return", .keyword_return },
-        .{ "break", .keyword_break },
-        .{ "and", .keyword_and },
-        .{ "or", .keyword_or },
-        .{ "not", .keyword_not },
-        .{ "true", .keyword_true },
-        .{ "false", .keyword_false },
         .{ "nil", .keyword_nil },
+        .{ "not", .keyword_not },
+        .{ "or", .keyword_or },
+        .{ "repeat", .keyword_repeat },
+        .{ "return", .keyword_return },
+        .{ "then", .keyword_then },
+        .{ "true", .keyword_true },
+        .{ "until", .keyword_until },
+        .{ "while", .keyword_while },
     });
 
     pub fn getKeyword(bytes: []const u8) ?Tag {
@@ -186,7 +188,9 @@ pub const Lexer = struct {
         invalid,
         string_literal_single,
         string_literal_double,
-        number_literal,
+        number,
+        number_dot,
+        number_exponent,
         left_bracket,
         // right_bracket,
         left_angle_bracket,
@@ -240,7 +244,7 @@ pub const Lexer = struct {
                 },
                 '0'...'9' => {
                     result.tag = .number_literal;
-                    continue :state .number_literal;
+                    continue :state .number;
                 },
                 '.' => continue :state .dot,
                 '-' => continue :state .minus,
@@ -318,9 +322,6 @@ pub const Lexer = struct {
                         }
                     },
                 }
-            },
-
-            .number_literal => {
             },
 
             .dot => {
@@ -422,7 +423,54 @@ pub const Lexer = struct {
                     else => result.tag = .invalid,
                 }
             },
-            .number_literal => {},
+            .number => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    '0'...'9',
+                    'a'...'d',
+                    'f',
+                    'x',
+                    'A'...'D',
+                    'F',
+                    => continue :state .number,
+                    '.' => continue :state .number_dot,
+                    'e', 'E' => {
+                        self.index += 1;
+                        switch (self.buffer[self.index]) {
+                            '+', '-' => self.index += 1,
+                            else => {},
+                        }
+                        continue :state .number_exponent;
+                    },
+                    else => {},
+                }
+            },
+            .number_dot => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    '0'...'9',
+                    'a'...'d',
+                    'f',
+                    'x',
+                    'A'...'D',
+                    'F',
+                    => continue :state .number,
+                    'e', 'E' => continue :state .number_exponent,
+                    else => self.index -= 1,
+                }
+            },
+            .number_exponent => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    '0'...'9',
+                    'a'...'f',
+                    'A'...'F',
+                    '+',
+                    '-',
+                    => continue :state .number,
+                    else => {},
+                }
+            },
             .string_literal_single => {},
             .string_literal_double => {},
             .long_bracket => {},
@@ -444,3 +492,54 @@ pub const Lexer = struct {
         return result;
     }
 };
+
+fn testLex(src: [:0]const u8, expected_tags: []const Token.Tag) !void {
+    var lexer = Lexer.init(src);
+    for (expected_tags) |expected| {
+        const actual = lexer.next();
+        try std.testing.expectEqual(expected, actual.tag);
+    }
+
+    const last_token = lexer.next();
+    try std.testing.expectEqual(Token.Tag.eof, last_token.tag);
+}
+
+test "keyword tokens" {
+    try testLex("and", &.{Token.Tag.keyword_and});
+    try testLex("break", &.{Token.Tag.keyword_break});
+    try testLex("do", &.{Token.Tag.keyword_do});
+    try testLex("else", &.{Token.Tag.keyword_else});
+    try testLex("elseif", &.{Token.Tag.keyword_elseif});
+    try testLex("end", &.{Token.Tag.keyword_end});
+    try testLex("false", &.{Token.Tag.keyword_false});
+    try testLex("for", &.{Token.Tag.keyword_for});
+    try testLex("function", &.{Token.Tag.keyword_function});
+    try testLex("if", &.{Token.Tag.keyword_if});
+    try testLex("in", &.{Token.Tag.keyword_in});
+    try testLex("local", &.{Token.Tag.keyword_local});
+    try testLex("nil", &.{Token.Tag.keyword_nil});
+    try testLex("not", &.{Token.Tag.keyword_not});
+    try testLex("or", &.{Token.Tag.keyword_or});
+    try testLex("repeat", &.{Token.Tag.keyword_repeat});
+    try testLex("return", &.{Token.Tag.keyword_return});
+    try testLex("then", &.{Token.Tag.keyword_then});
+    try testLex("true", &.{Token.Tag.keyword_true});
+    try testLex("until", &.{Token.Tag.keyword_until});
+    try testLex("while", &.{Token.Tag.keyword_while});
+}
+
+test "number literals" {
+    try testLex("3", &.{Token.Tag.number_literal});
+    try testLex("3.0", &.{Token.Tag.number_literal});
+    try testLex("3.1416", &.{Token.Tag.number_literal});
+    try testLex("0xff", &.{Token.Tag.number_literal});
+    try testLex("0x56", &.{Token.Tag.number_literal});
+    try testLex("0x1.adef", &.{Token.Tag.number_literal});
+}
+
+test "number exponent literals" {
+    try testLex("314.16e-2", &.{Token.Tag.number_literal});
+    try testLex("0.31416E1", &.{Token.Tag.number_literal});
+    try testLex("0x1.abcedfe10", &.{Token.Tag.number_literal});
+    try testLex("0x1.abcedfE10", &.{Token.Tag.number_literal});
+}

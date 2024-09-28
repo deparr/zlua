@@ -1,5 +1,5 @@
 const std = @import("std");
-const token = @import("tokenizer.zig");
+const lex = @import("lexer.zig");
 
 const print = std.debug.print;
 
@@ -21,8 +21,8 @@ pub fn main() !void {
         \\end
     ;
 
-    var lexer = token.Tokenizer.init(source);
-    var tok: token.Token = undefined;
+    var lexer = lex.Lexer.init(source);
+    var tok: lex.Token = undefined;
 
     while (true) {
         tok = lexer.next();
