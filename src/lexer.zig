@@ -320,7 +320,8 @@ pub const Lexer = struct {
                 }
             },
 
-            // number
+            .number_literal => {
+            },
 
             .dot => {
                 self.index += 1;
