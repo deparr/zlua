@@ -14,11 +14,8 @@ pub fn main() !void {
     // try bw.flush(); // Don't forget to flush!
 
     const source: [:0]const u8 =
-        \\local M = {}
-        \\local a = c + b -- some comment
-        \\function M.foo(a, b)
-        \\ return a + b
-        \\end
+        \\"123
+        \\"
     ;
 
     var lexer = lex.Lexer.init(source);
@@ -26,7 +23,7 @@ pub fn main() !void {
 
     while (true) {
         tok = lexer.next();
-        print("{any}\n", .{tok.tag});
+        print("{s} {s}\n", .{@tagName(tok.tag), lexer.buffer[tok.loc.start..tok.loc.end]});
         if (tok.tag == .eof) break;
     }
 

@@ -186,8 +186,10 @@ pub const Lexer = struct {
         start,
         identifier,
         invalid,
-        string_literal_single,
-        string_literal_double,
+        string_single,
+        string_double,
+        string_backslash_single,
+        string_backslash_double,
         number,
         number_dot,
         number_exponent,
@@ -232,11 +234,11 @@ pub const Lexer = struct {
                 },
                 '"' => {
                     result.tag = .string_literal;
-                    continue :state .string_literal_double;
+                    continue :state .string_double;
                 },
                 '\'' => {
                     result.tag = .string_literal;
-                    continue :state .string_literal_single;
+                    continue :state .string_single;
                 },
                 'a'...'z', 'A'...'Z', '_' => {
                     result.tag = .identifier;
@@ -308,8 +310,6 @@ pub const Lexer = struct {
                 },
                 else => continue :state .invalid,
             },
-
-            //string literal
 
             .identifier => {
                 self.index += 1;
@@ -471,8 +471,64 @@ pub const Lexer = struct {
                     else => {},
                 }
             },
-            .string_literal_single => {},
-            .string_literal_double => {},
+            .string_single => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    0 => {
+                        if (self.index == self.buffer.len) {
+                            result.tag = .invalid;
+                        } else {
+                            continue :state .string_single;
+                        }
+                    },
+                    '\n', '\r' => result.tag = .invalid,
+                    '\\' => continue :state .string_backslash_single,
+                    '\'' => self.index += 1,
+                    else => continue :state .string_single,
+                }
+            },
+            .string_double => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    0 => {
+                        if (self.index == self.buffer.len) {
+                            result.tag = .invalid;
+                        } else {
+                            continue :state .string_single;
+                        }
+                    },
+                    '\n', '\r' => result.tag = .invalid,
+                    '\\' => continue :state .string_backslash_double,
+                    '"' => self.index += 1,
+                    else => continue :state .string_double,
+                }
+            },
+            .string_backslash_single => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    0 => {
+                        if (self.index == self.buffer.len) {
+                            result.tag = .invalid;
+                        } else {
+                            continue :state .string_single;
+                        }
+                    },
+                    else => continue :state .string_single,
+                }
+            },
+            .string_backslash_double => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    0 => {
+                        if (self.index == self.buffer.len) {
+                            result.tag = .invalid;
+                        } else {
+                            continue :state .string_double;
+                        }
+                    },
+                    else => continue :state .string_double,
+                }
+            },
             .long_bracket => {},
             .invalid => {
                 self.index += 1;
@@ -542,4 +598,15 @@ test "number exponent literals" {
     try testLex("0.31416E1", &.{Token.Tag.number_literal});
     try testLex("0x1.abcedfe10", &.{Token.Tag.number_literal});
     try testLex("0x1.abcedfE10", &.{Token.Tag.number_literal});
+}
+
+test "string literals" {
+    try testLex("\"\"", &.{Token.Tag.string_literal});
+    try testLex("''", &.{Token.Tag.string_literal});
+    try testLex("\"'\"", &.{Token.Tag.string_literal});
+    try testLex("'\"'", &.{Token.Tag.string_literal});
+    // todo: test this
+    // try testLex(.{ 0x22, 0x31, 0x00, 0x32, 0x22, 0x00 }, &.{Token.Tag.string_literal});
+
+    try testLex("\"123\n\"", &.{Token.Tag.invalid});
 }
