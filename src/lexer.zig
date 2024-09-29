@@ -205,7 +205,7 @@ pub const Lexer = struct {
         line_comment,
     };
 
-    pub fn next(self: *Lexer) Token {
+    pub fn next(self: *Lexer) !Token {
         var result: Token = .{ .tag = undefined, .loc = .{
             .start = self.index,
             .end = undefined,
@@ -606,7 +606,7 @@ test "string literals" {
     try testLex("\"'\"", &.{Token.Tag.string_literal});
     try testLex("'\"'", &.{Token.Tag.string_literal});
     // todo: test this
-    // try testLex(.{ 0x22, 0x31, 0x00, 0x32, 0x22, 0x00 }, &.{Token.Tag.string_literal});
+    try testLex(&[_:0]u8{ 0x22, 0x31, 0x00, 0x32, 0x22 }, &.{Token.Tag.string_literal});
 
     try testLex("\"123\n\"", &.{Token.Tag.invalid});
 }
