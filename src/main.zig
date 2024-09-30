@@ -14,8 +14,13 @@ pub fn main() !void {
     // try bw.flush(); // Don't forget to flush!
 
     const source: [:0]const u8 =
-        \\0xe+1
-        \\3-4
+        \\local a = 12312 + 123123
+        \\local b = a << 1
+        \\local c = a < 1000000 and b > 0 or not false
+        \\function d()
+        \\  return nil
+        \\end
+        \\local e = {}
     ;
 
     var lexer = lex.Lexer.init(source);
@@ -26,6 +31,8 @@ pub fn main() !void {
         print("{s} {s}\n", .{ @tagName(tok.tag), lexer.buffer[tok.loc.start..tok.loc.end] });
         if (tok.tag == .eof) break;
     }
+
+    print("\nsource:\n\n{s}", .{source});
 
     return;
 }

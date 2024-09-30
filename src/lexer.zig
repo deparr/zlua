@@ -19,6 +19,7 @@ pub const Token = struct {
         .{ "false", .keyword_false },
         .{ "for", .keyword_for },
         .{ "function", .keyword_function },
+        .{ "goto", .keyword_goto },
         .{ "if", .keyword_if },
         .{ "in", .keyword_in },
         .{ "local", .keyword_local },
@@ -40,39 +41,45 @@ pub const Token = struct {
     pub const Tag = enum {
         invalid,
         identifier,
-        // not sure about this
         string_literal,
-        number_literal,
+        int_literal,
+        float_literal,
         eof,
-        left_bracket,
-        left_bracket_bracket,
-        right_bracket,
-        right_bracket_bracket,
-        left_curly_bracket,
-        right_curly_bracket,
-        left_paren,
-        right_paren,
-        comma,
-        colon,
-        dot,
-        semicolon,
-        equal,
+
         plus,
         minus,
-        minus_minus,
         asterisk,
         slash,
-        caret,
         percent,
-        dot_dot,
-        dot_dot_dot,
-        left_angle_bracket,
-        left_angle_bracket_equal,
-        right_angle_bracket,
-        right_angle_bracket_equal,
+        caret,
+        octothorpe,
+        ampersand,
+        tilde,
+        pipe,
+        left_angle_bracket_bracket,
+        right_angle_bracket_bracket,
+        slash_slash,
         equal_equal,
         tilde_equal,
-        octothorpe,
+        left_angle_bracket_equal,
+        right_angle_bracket_equal,
+        left_angle_bracket,
+        right_angle_bracket,
+        equal,
+        left_paren,
+        right_paren,
+        left_curly_bracket,
+        right_curly_bracket,
+        left_bracket,
+        right_bracket,
+        colon_colon,
+        semicolon,
+        colon,
+        comma,
+        dot,
+        dot_dot,
+        dot_dot_dot,
+
         keyword_and,
         keyword_break,
         keyword_do,
@@ -82,6 +89,7 @@ pub const Token = struct {
         keyword_false,
         keyword_for,
         keyword_function,
+        keyword_goto,
         keyword_if,
         keyword_in,
         keyword_local,
@@ -100,39 +108,45 @@ pub const Token = struct {
                 .invalid,
                 .identifier,
                 .string_literal,
-                .number_literal,
+                .int_literal,
+                .float_literal,
                 .eof,
                 => null,
 
-                .left_bracket => "[",
-                .left_bracket_bracket => "[[",
-                .right_bracket => "]",
-                .right_bracket_bracket => "]]",
-                .left_curly_bracket => "{",
-                .right_curly_bracket => "}",
-                .left_paren => "(",
-                .right_paren => ")",
-                .comma => ",",
-                .colon => ":",
-                .dot => ".",
-                .semicolon => ";",
-                .equal => "",
                 .plus => "+",
                 .minus => "-",
-                .minus_minus => "--",
                 .asterisk => "*",
                 .slash => "/",
-                .caret => "^",
                 .percent => "%",
-                .dot_dot => "..",
-                .dot_dot_dot => "...",
-                .left_angle_bracket => "<",
-                .left_angle_bracket_equal => "<=",
-                .right_angle_bracket => ">",
-                .right_angle_bracket_equal => ">=",
+                .caret => "^",
+                .octothorpe => "#",
+                .ampersand => "&",
+                .tilde => "~",
+                .pipe => "|",
+                .left_angle_bracket_bracket => "<<",
+                .right_angle_bracket_bracket => ">>",
+                .slash_slash => "//",
                 .equal_equal => "==",
                 .tilde_equal => "~=",
-                .octothorpe => "#",
+                .left_angle_bracket_equal => "<=",
+                .right_angle_bracket_equal => ">=",
+                .left_angle_bracket => "<",
+                .right_angle_bracket => ">",
+                .equal => "=",
+                .left_paren => "(",
+                .right_paren => ")",
+                .left_curly_bracket => "{",
+                .right_curly_bracket => "}",
+                .left_bracket => "[",
+                .right_bracket => "]",
+                .colon_colon => "::",
+                .semicolon => ";",
+                .colon => ":",
+                .comma => ",",
+                .dot => ".",
+                .dot_dot => "..",
+                .dot_dot_dot => "...",
+
                 .keyword_and => "and",
                 .keyword_break => "break",
                 .keyword_do => "do",
@@ -142,6 +156,7 @@ pub const Token = struct {
                 .keyword_false => "false",
                 .keyword_for => "for",
                 .keyword_function => "function",
+                .keyword_goto => "goto",
                 .keyword_if => "if",
                 .keyword_in => "in",
                 .keyword_local => "local",
@@ -163,7 +178,8 @@ pub const Token = struct {
                 .identifier => "an identifier",
                 .string_literal => "a string literal",
                 .eof => "EOF",
-                .number_literal => "a number literal",
+                .int_literal => "an integer literal",
+                .float_literal => "a float literal",
                 else => unreachable,
             };
         }
@@ -186,30 +202,35 @@ pub const Lexer = struct {
         start,
         identifier,
         invalid,
-        string_single,
-        string_double,
-        string_backslash_single,
-        string_backslash_double,
-        number,
-        number_dot,
-        number_exponent,
+        string,
+        string_backslash,
+        int,
+        int_hex,
+        int_dot,
+        int_exponent,
+        float,
+        float_exponent,
+        hex_exponent,
         left_bracket,
-        // right_bracket,
         left_angle_bracket,
         right_angle_bracket,
         dot,
+        dot_dot,
         minus,
         equal,
         tilde,
+        colon,
+        slash,
         long_bracket,
         line_comment,
     };
 
-    pub fn next(self: *Lexer) !Token {
+    pub fn next(self: *Lexer) Token {
         var result: Token = .{ .tag = undefined, .loc = .{
             .start = self.index,
             .end = undefined,
         } };
+        var string_delim: u8 = undefined;
 
         state: switch (State.start) {
             .start => switch (self.buffer[self.index]) {
@@ -226,7 +247,8 @@ pub const Lexer = struct {
                         continue :state .invalid;
                     }
                 },
-                ' ', '\t', '\n' => {
+                // 0xb vertical tab, 0xc form feed
+                ' ', '\t', '\n', '\r', 0x0b, 0x0c => {
                     self.index += 1;
                     result.loc.start = self.index;
 
@@ -234,28 +256,60 @@ pub const Lexer = struct {
                 },
                 '"' => {
                     result.tag = .string_literal;
-                    continue :state .string_double;
+                    string_delim = '"';
+                    continue :state .string;
                 },
                 '\'' => {
                     result.tag = .string_literal;
-                    continue :state .string_single;
+                    string_delim = '\'';
+                    continue :state .string;
                 },
                 'a'...'z', 'A'...'Z', '_' => {
                     result.tag = .identifier;
                     continue :state .identifier;
                 },
                 '0'...'9' => {
-                    result.tag = .number_literal;
-                    continue :state .number;
+                    result.tag = .int_literal;
+                    self.index += 1;
+                    continue :state .int;
                 },
                 '.' => continue :state .dot,
                 '-' => continue :state .minus,
+                '/' => continue :state .slash,
                 '[' => continue :state .left_bracket,
-                // ']' => continue :state .right_bracket,
+                ':' => continue :state .colon,
                 '<' => continue :state .left_angle_bracket,
                 '>' => continue :state .right_angle_bracket,
                 '=' => continue :state .equal,
                 '~' => continue :state .tilde,
+                '+' => {
+                    result.tag = .plus;
+                    self.index += 1;
+                },
+                '*' => {
+                    result.tag = .asterisk;
+                    self.index += 1;
+                },
+                '%' => {
+                    result.tag = .percent;
+                    self.index += 1;
+                },
+                '^' => {
+                    result.tag = .caret;
+                    self.index += 1;
+                },
+                '#' => {
+                    result.tag = .octothorpe;
+                    self.index += 1;
+                },
+                '&' => {
+                    result.tag = .ampersand;
+                    self.index += 1;
+                },
+                '|' => {
+                    result.tag = .pipe;
+                    self.index += 1;
+                },
                 '(' => {
                     result.tag = .left_paren;
                     self.index += 1;
@@ -280,37 +334,8 @@ pub const Lexer = struct {
                     result.tag = .semicolon;
                     self.index += 1;
                 },
-                ':' => {
-                    result.tag = .colon;
-                    self.index += 1;
-                },
-                '+' => {
-                    result.tag = .plus;
-                    self.index += 1;
-                },
-                '*' => {
-                    result.tag = .asterisk;
-                    self.index += 1;
-                },
-                '/' => {
-                    result.tag = .slash;
-                    self.index += 1;
-                },
-                '^' => {
-                    result.tag = .caret;
-                    self.index += 1;
-                },
-                '%' => {
-                    result.tag = .percent;
-                    self.index += 1;
-                },
-                '#' => {
-                    result.tag = .octothorpe;
-                    self.index += 1;
-                },
                 else => continue :state .invalid,
             },
-
             .identifier => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
@@ -323,21 +348,22 @@ pub const Lexer = struct {
                     },
                 }
             },
-
             .dot => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
-                    '.' => continue :state .dot,
-                    else => {
-                        switch (self.index - result.loc.start) {
-                            1 => result.tag = .dot,
-                            2 => result.tag = .dot_dot,
-                            else => {
-                                result.tag = .dot_dot_dot;
-                                self.index = result.loc.start + 3;
-                            },
-                        }
+                    '0'...'9' => continue :state .float,
+                    '.' => continue :state .dot_dot,
+                    else => {},
+                }
+            },
+            .dot_dot => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    '.' => {
+                        self.index += 1;
+                        result.tag = .dot_dot_dot;
                     },
+                    else => result.tag = .dot_dot,
                 }
             },
             .minus => {
@@ -368,6 +394,7 @@ pub const Lexer = struct {
                         // ignore comment
                         continue :state .start;
                     },
+                    // todo ???
                     0x01...0x09, 0x0b...0x0c, 0x0e...0x1f, 0x7f => {
                         continue :state .invalid;
                     },
@@ -377,7 +404,7 @@ pub const Lexer = struct {
             .left_bracket => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
-                    '[' => continue :state .long_bracket,
+                    '[', '=' => continue :state .long_bracket,
                     else => result.tag = .left_bracket,
                 }
             },
@@ -387,6 +414,10 @@ pub const Lexer = struct {
                     '=' => {
                         self.index += 1;
                         result.tag = .left_angle_bracket_equal;
+                    },
+                    '<' => {
+                        self.index += 1;
+                        result.tag = .left_angle_bracket_bracket;
                     },
                     else => result.tag = .left_angle_bracket,
                 }
@@ -399,10 +430,13 @@ pub const Lexer = struct {
                         self.index += 1;
                         result.tag = .right_angle_bracket_equal;
                     },
+                    '>' => {
+                        self.index += 1;
+                        result.tag = .right_angle_bracket_bracket;
+                    },
                     else => result.tag = .right_angle_bracket,
                 }
             },
-
             .equal => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
@@ -420,113 +454,82 @@ pub const Lexer = struct {
                         self.index += 1;
                         result.tag = .tilde_equal;
                     },
-                    else => result.tag = .invalid,
+                    else => result.tag = .tilde,
                 }
             },
-            .number => {
+            .slash => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
-                    '0'...'9',
-                    'a'...'d',
-                    'f',
-                    'x',
-                    'A'...'D',
-                    'F',
-                    => continue :state .number,
-                    '.' => continue :state .number_dot,
-                    'e', 'E' => {
+                    '/' => {
                         self.index += 1;
-                        switch (self.buffer[self.index]) {
-                            '+', '-' => self.index += 1,
-                            else => {},
-                        }
-                        continue :state .number_exponent;
+                        result.tag = .slash_slash;
                     },
-                    else => {},
+                    else => result.tag = .slash,
                 }
             },
-            .number_dot => {
+            .colon => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
-                    '0'...'9',
-                    'a'...'d',
-                    'f',
-                    'x',
-                    'A'...'D',
-                    'F',
-                    => continue :state .number,
-                    'e', 'E' => continue :state .number_exponent,
-                    else => self.index -= 1,
+                    ':' => {
+                        self.index += 1;
+                        result.tag = .colon_colon;
+                    },
+                    else => result.tag = .colon,
                 }
             },
-            .number_exponent => {
+            .int => switch (self.buffer[self.index]) {
+                '.' => continue :state .int_dot,
+                '_', 'a'...'d', 'f', 'A'...'D', 'F', '0'...'9' => {
+                    self.index += 1;
+                    continue :state .int;
+                },
+                'e', 'E', 'p', 'P' => {
+                    continue :state .int_exponent;
+                },
+                else => {},
+            },
+            .int_exponent => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
-                    '0'...'9',
-                    'a'...'f',
-                    'A'...'F',
-                    '+',
-                    '-',
-                    => continue :state .number,
-                    else => {},
+                    '-', '+' => {
+                        self.index += 1;
+                        continue :state .float;
+                    },
+                    else => continue :state .int,
                 }
             },
-            .string_single => {
+            .int_hex => {},
+            .int_dot => {},
+            .float => {},
+            .float_exponent => {},
+            .hex_exponent => {},
+            .string => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
                     0 => {
                         if (self.index == self.buffer.len) {
                             result.tag = .invalid;
                         } else {
-                            continue :state .string_single;
+                            continue :state .string;
                         }
                     },
                     '\n', '\r' => result.tag = .invalid,
-                    '\\' => continue :state .string_backslash_single,
-                    '\'' => self.index += 1,
-                    else => continue :state .string_single,
+                    '\\' => continue :state .string_backslash,
+                    string_delim => self.index += 1,
+                    else => continue :state .string,
                 }
             },
-            .string_double => {
+            .string_backslash => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
                     0 => {
                         if (self.index == self.buffer.len) {
                             result.tag = .invalid;
                         } else {
-                            continue :state .string_single;
+                            continue :state .string;
                         }
                     },
-                    '\n', '\r' => result.tag = .invalid,
-                    '\\' => continue :state .string_backslash_double,
-                    '"' => self.index += 1,
-                    else => continue :state .string_double,
-                }
-            },
-            .string_backslash_single => {
-                self.index += 1;
-                switch (self.buffer[self.index]) {
-                    0 => {
-                        if (self.index == self.buffer.len) {
-                            result.tag = .invalid;
-                        } else {
-                            continue :state .string_single;
-                        }
-                    },
-                    else => continue :state .string_single,
-                }
-            },
-            .string_backslash_double => {
-                self.index += 1;
-                switch (self.buffer[self.index]) {
-                    0 => {
-                        if (self.index == self.buffer.len) {
-                            result.tag = .invalid;
-                        } else {
-                            continue :state .string_double;
-                        }
-                    },
-                    else => continue :state .string_double,
+                    else => continue :state .string,
                 }
             },
             .long_bracket => {},
@@ -570,6 +573,7 @@ test "keyword tokens" {
     try testLex("false", &.{Token.Tag.keyword_false});
     try testLex("for", &.{Token.Tag.keyword_for});
     try testLex("function", &.{Token.Tag.keyword_function});
+    try testLex("goto", &.{Token.Tag.keyword_goto});
     try testLex("if", &.{Token.Tag.keyword_if});
     try testLex("in", &.{Token.Tag.keyword_in});
     try testLex("local", &.{Token.Tag.keyword_local});
@@ -585,19 +589,19 @@ test "keyword tokens" {
 }
 
 test "number literals" {
-    try testLex("3", &.{Token.Tag.number_literal});
-    try testLex("3.0", &.{Token.Tag.number_literal});
-    try testLex("3.1416", &.{Token.Tag.number_literal});
-    try testLex("0xff", &.{Token.Tag.number_literal});
-    try testLex("0x56", &.{Token.Tag.number_literal});
-    try testLex("0x1.adef", &.{Token.Tag.number_literal});
+    try testLex("3", &.{Token.Tag.int_literal});
+    try testLex("3.0", &.{Token.Tag.float_literal});
+    try testLex("3.1416", &.{Token.Tag.float_literal});
+    try testLex("0xff", &.{Token.Tag.int_literal});
+    try testLex("0x56", &.{Token.Tag.int_literal});
+    try testLex("0x1.adef", &.{Token.Tag.float_literal});
 }
 
 test "number exponent literals" {
-    try testLex("314.16e-2", &.{Token.Tag.number_literal});
-    try testLex("0.31416E1", &.{Token.Tag.number_literal});
-    try testLex("0x1.abcedfe10", &.{Token.Tag.number_literal});
-    try testLex("0x1.abcedfE10", &.{Token.Tag.number_literal});
+    try testLex("314.16e-2", &.{Token.Tag.float_literal});
+    try testLex("0.31416E1", &.{Token.Tag.float_literal});
+    try testLex("0x1.abcedfe10", &.{Token.Tag.float_literal});
+    try testLex("0x1.abcedfE10", &.{Token.Tag.float_literal});
 }
 
 test "string literals" {
@@ -605,7 +609,6 @@ test "string literals" {
     try testLex("''", &.{Token.Tag.string_literal});
     try testLex("\"'\"", &.{Token.Tag.string_literal});
     try testLex("'\"'", &.{Token.Tag.string_literal});
-    // todo: test this
     try testLex(&[_:0]u8{ 0x22, 0x31, 0x00, 0x32, 0x22 }, &.{Token.Tag.string_literal});
 
     try testLex("\"123\n\"", &.{Token.Tag.invalid});
