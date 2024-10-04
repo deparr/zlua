@@ -205,12 +205,10 @@ pub const Lexer = struct {
         string,
         string_backslash,
         int,
-        int_hex,
         int_dot,
         int_exponent,
         float,
         float_exponent,
-        hex_exponent,
         left_bracket,
         left_angle_bracket,
         right_angle_bracket,
@@ -230,8 +228,6 @@ pub const Lexer = struct {
             .start = self.index,
             .end = undefined,
         } };
-        var string_delim: u8 = undefined;
-
         state: switch (State.start) {
             .start => switch (self.buffer[self.index]) {
                 0 => {
@@ -254,14 +250,8 @@ pub const Lexer = struct {
 
                     continue :state .start;
                 },
-                '"' => {
+                '"', '\'' => {
                     result.tag = .string_literal;
-                    string_delim = '"';
-                    continue :state .string;
-                },
-                '\'' => {
-                    result.tag = .string_literal;
-                    string_delim = '\'';
                     continue :state .string;
                 },
                 'a'...'z', 'A'...'Z', '_' => {
@@ -378,7 +368,7 @@ pub const Lexer = struct {
                 switch (self.buffer[self.index]) {
                     0 => {
                         if (self.index != self.buffer.len) {
-                            continue :state .invalid;
+                            continue :state .line_comment;
                         } else return .{
                             .tag = .eof,
                             .loc = .{
@@ -387,7 +377,6 @@ pub const Lexer = struct {
                             },
                         };
                     },
-                    // '\r' case for windows
                     '\n' => {
                         self.index += 1;
                         result.loc.start = self.index;
@@ -404,7 +393,7 @@ pub const Lexer = struct {
             .left_bracket => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
-                    '[', '=' => continue :state .long_bracket,
+                    '[', '=' => continue :state .long_bracket_start,
                     else => result.tag = .left_bracket,
                 }
             },
@@ -479,7 +468,7 @@ pub const Lexer = struct {
             },
             .int => switch (self.buffer[self.index]) {
                 '.' => continue :state .int_dot,
-                '_', 'a'...'d', 'f', 'A'...'D', 'F', '0'...'9' => {
+                '_', 'a'...'d', 'f', 'A'...'D', 'F', '0'...'9', 'x', 'X' => {
                     self.index += 1;
                     continue :state .int;
                 },
@@ -493,16 +482,38 @@ pub const Lexer = struct {
                 switch (self.buffer[self.index]) {
                     '-', '+' => {
                         self.index += 1;
-                        continue :state .float;
+                        continue :state .int;
                     },
                     else => continue :state .int,
                 }
             },
-            .int_hex => {},
-            .int_dot => {},
-            .float => {},
-            .float_exponent => {},
-            .hex_exponent => {},
+            .int_dot => {
+                result.tag = .float_literal;
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    'a'...'d', 'f', 'A'...'D', 'F', '0'...'9' => continue :state .float,
+                    'e', 'E', 'p', 'P' => continue :state .float_exponent,
+                    else => {},
+                }
+            },
+            .float => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    'a'...'d', 'f', 'A'...'D', 'F', '0'...'9' => continue :state .float,
+                    'e', 'E', 'p', 'P' => continue :state .float_exponent,
+                    else => {},
+                }
+            },
+            .float_exponent => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    '-', '+' => {
+                        self.index += 1;
+                        continue :state .float;
+                    },
+                    else => continue :state .float,
+                }
+            },
             .string => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
@@ -513,9 +524,13 @@ pub const Lexer = struct {
                             continue :state .string;
                         }
                     },
-                    '\n', '\r' => result.tag = .invalid,
+                    '\n', '\r' => continue :state .invalid,
                     '\\' => continue :state .string_backslash,
-                    string_delim => self.index += 1,
+                    '"', '\'' => {
+                        if (self.buffer[self.index] == self.buffer[result.loc.start]) {
+                            self.index += 1;
+                        } else continue :state .string;
+                    },
                     else => continue :state .string,
                 }
             },
@@ -532,7 +547,23 @@ pub const Lexer = struct {
                     else => continue :state .string,
                 }
             },
-            .long_bracket => {},
+            // pointing at second [ or = 
+            .long_bracket_start => switch(self.buffer[self.index]) {
+                0 => {
+                    if (self.index == self.buffer.len) {
+                        result.tag = .invalid;
+                    } else {
+                        self.index += 1;
+                        continue :state .long_bracket;
+                    }
+                },
+                '=' => {
+                    self.index += 1;
+                    continue :state .long_bracket;
+                },
+            },
+            .long_bracket_content => {},
+            .long_bracket_end => {},
             .invalid => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
@@ -588,12 +619,17 @@ test "keyword tokens" {
     try testLex("while", &.{Token.Tag.keyword_while});
 }
 
+test "operators" {
+    try testLex("", &.{Token.Tag.plus});
+}
+
 test "number literals" {
     try testLex("3", &.{Token.Tag.int_literal});
-    try testLex("3.0", &.{Token.Tag.float_literal});
-    try testLex("3.1416", &.{Token.Tag.float_literal});
     try testLex("0xff", &.{Token.Tag.int_literal});
     try testLex("0x56", &.{Token.Tag.int_literal});
+
+    try testLex("3.0", &.{Token.Tag.float_literal});
+    try testLex("3.1416", &.{Token.Tag.float_literal});
     try testLex("0x1.adef", &.{Token.Tag.float_literal});
 }
 
@@ -611,5 +647,10 @@ test "string literals" {
     try testLex("'\"'", &.{Token.Tag.string_literal});
     try testLex(&[_:0]u8{ 0x22, 0x31, 0x00, 0x32, 0x22 }, &.{Token.Tag.string_literal});
 
+    try testLex("\"123\\\n\"", &.{Token.Tag.string_literal});
     try testLex("\"123\n\"", &.{Token.Tag.invalid});
+}
+
+test "long bracket" {
+
 }

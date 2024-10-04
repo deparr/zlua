@@ -13,15 +13,17 @@ pub fn main() !void {
     //
     // try bw.flush(); // Don't forget to flush!
 
-    const source: [:0]const u8 =
-        \\local a = 12312 + 123123
-        \\local b = a << 1
-        \\local c = a < 1000000 and b > 0 or not false
-        \\function d()
-        \\  return nil
-        \\end
-        \\local e = {}
-    ;
+    // const source: [:0]const u8 =
+    //     \\local a = 12312 + 123123
+    //     \\local b = a << 1
+    //     \\local c = a < 1000000 and b > 0 or not false
+    //     \\function d()
+    //     \\  return nil
+    //     \\end
+    //     \\local e = {}
+    // ;
+
+    const source: [:0]const u8 = "[[asdfasdf]]";
 
     var lexer = lex.Lexer.init(source);
     var tok: lex.Token = undefined;
@@ -32,7 +34,7 @@ pub fn main() !void {
         if (tok.tag == .eof) break;
     }
 
-    print("\nsource:\n\n{s}", .{source});
+    print("\nsource:\n\n{s}\n", .{source});
 
     return;
 }

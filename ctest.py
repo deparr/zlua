@@ -1,7 +1,11 @@
+#!/usr/bin/env python
+
 import os
 
 b = bytearray(
     [
+        0x2d,
+        0x2d,
         0x6C,  # local
         0x6F,
         0x63,
@@ -22,21 +26,23 @@ b = bytearray(
         0x32,
         0x33,
 
+        0x00,  # target
+
         0x34,  # 456"
         0x35,
         0x36,
         0x22,
 
-        0x0A,
+        # 0x0A,
 
-        0x70,  # print(a)
-        0x72,
-        0x69,
-        0x6E,
-        0x74,
-        0x28,
-        0x61,
-        0x29,
+        # 0x70,  # print(a)
+        # 0x72,
+        # 0x69,
+        # 0x6E,
+        # 0x74,
+        # 0x28,
+        # 0x61,
+        # 0x29,
     ]
 )
 
